@@ -9,7 +9,7 @@ USERNAME = "twice_tiktok_official"
 SAVE_DIR = Path("downloads")
 SAVE_DIR.mkdir(exist_ok=True)
 
-LAST_ID_FILE = SAVE_DIR / "last_video_id.txt"
+ID_LIST_FILE = SAVE_DIR / "video_id_list.txt"
 
 PAGE_ACCESS_TOKEN = os.getenv("PAGE_ACCESS_TOKEN")
 PAGE_ID = os.getenv("PAGE_ID")
@@ -21,7 +21,7 @@ TWICE_MEMBERS = [
 ]
 
 def get_latest_video(username: str):
-    """Fetch the latest TikTok video with full caption."""
+    """Fetch the latest TikTok video with full caption and tags."""
     try:
         # Step 1: Get latest video ID
         playlist_cmd = ["python", "-m", "yt_dlp", "-J", "--flat-playlist", f"https://www.tiktok.com/@{username}"]
@@ -95,13 +95,14 @@ if __name__ == "__main__":
     if not latest:
         sys.exit(0)
 
-    if not LAST_ID_FILE.exists():
-        LAST_ID_FILE.write_text("")
+    # Ensure file exists
+    if not ID_LIST_FILE.exists():
+        ID_LIST_FILE.write_text("")
 
-    last_id = LAST_ID_FILE.read_text().strip()
+    uploaded_ids = set(ID_LIST_FILE.read_text().splitlines())
 
-    if latest["id"] == last_id:
-        print(f"⏩ Skipping: Latest video ({latest['id']}) already uploaded.")
+    if latest["id"] in uploaded_ids:
+        print(f"⏩ Skipping: Video ({latest['id']}) already uploaded.")
         sys.exit(0)
 
     print("🔗 Latest video URL:", latest['url'])
@@ -111,6 +112,9 @@ if __name__ == "__main__":
     if video_path:
         fb_caption = f"{latest['caption']}\n\ncrdts : {latest['username']}"
         if post_to_facebook(video_path, fb_caption):
-            LAST_ID_FILE.write_text(latest["id"])
-            video_path.unlink()
+            # Append video ID to history
+            with open(ID_LIST_FILE, "a") as f:
+                f.write(latest["id"] + "\n")
+
+            video_path.unlink()  # cleanup
             print("🧹 Cleaned up local file.")
