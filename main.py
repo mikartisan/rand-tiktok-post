@@ -20,11 +20,15 @@ TWICE_MEMBERS = [
     "mina", "dahyun", "chaeyoung", "tzuyu"
 ]
 
+
 def get_latest_video(username: str):
     """Fetch the latest TikTok video with full caption and tags."""
     try:
         # Step 1: Get latest video ID
-        playlist_cmd = ["python", "-m", "yt_dlp", "-J", "--flat-playlist", f"https://www.tiktok.com/@{username}"]
+        playlist_cmd = [
+            "python", "-m", "yt_dlp", "-J", "--flat-playlist",
+            f"https://www.tiktok.com/@{username}"
+        ]
         result = subprocess.run(playlist_cmd, capture_output=True, text=True, check=True)
         data = json.loads(result.stdout)
 
@@ -43,13 +47,12 @@ def get_latest_video(username: str):
         caption = (video_data.get("description") or "").lower()
         tags = [t.lower() for t in video_data.get("tags", [])]
 
-        # ✅ Filter: must include "twice" + at least one member
-        if "twice" not in caption and "twice" not in tags:
-            print("⚠️ Skipping: no 'twice' mention.")
-            return None
+        # ✅ Require both: #twice + one member hashtag
+        has_twice_tag = "twice" in tags
+        has_member_tag = any(member in tags for member in TWICE_MEMBERS)
 
-        if not any(member in caption or member in " ".join(tags) for member in TWICE_MEMBERS):
-            print("⚠️ Skipping: no member name found.")
+        if not (has_twice_tag and has_member_tag):
+            print("⚠️ Skipping: must include #twice + member hashtag.")
             return None
 
         return {
@@ -62,6 +65,7 @@ def get_latest_video(username: str):
     except subprocess.CalledProcessError as e:
         print("❌ yt-dlp error:", e.stderr)
         return None
+
 
 def download_video(url: str, video_id: str):
     """Download TikTok video to disk."""
@@ -76,6 +80,7 @@ def download_video(url: str, video_id: str):
         print("❌ Download failed:", e.stderr)
         return None
 
+
 def post_to_facebook(video_path: Path, caption: str):
     """Upload video to Facebook Page via Graph API."""
     url = f"https://graph.facebook.com/v18.0/{PAGE_ID}/videos"
@@ -89,6 +94,7 @@ def post_to_facebook(video_path: Path, caption: str):
     else:
         print("❌ Upload failed:", response.text)
         return False
+
 
 if __name__ == "__main__":
     latest = get_latest_video(USERNAME)
