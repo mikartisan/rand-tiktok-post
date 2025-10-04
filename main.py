@@ -1,9 +1,10 @@
-import json
+ import json
 import subprocess
 from pathlib import Path
 import os
 import requests
 import sys
+import re
 
 USERNAME = "twice_tiktok_official"
 SAVE_DIR = Path("downloads")
@@ -22,7 +23,7 @@ TWICE_MEMBERS = [
 
 
 def get_latest_video(username: str):
-    """Fetch the latest TikTok video with full caption and tags."""
+    """Fetch the latest TikTok video with full caption and hashtags extracted from caption text."""
     try:
         # Step 1: Get latest video ID
         playlist_cmd = [
@@ -45,11 +46,19 @@ def get_latest_video(username: str):
         video_data = json.loads(video_result.stdout)
 
         caption = (video_data.get("description") or "").lower()
-        tags = [t.lower() for t in video_data.get("tags", [])]
+
+        # 🔍 Extract hashtags from caption using regex
+        hashtags = re.findall(r"#\w+", caption)
+        hashtags = [h.lstrip("#") for h in hashtags]  # remove "#"
+
+        # 🔍 Debugging
+        print("DEBUG >>> Video ID:", video_data.get("id"))
+        print("DEBUG >>> Caption:", caption)
+        print("DEBUG >>> Hashtags:", hashtags)
 
         # ✅ Require both: #twice + one member hashtag
-        has_twice_tag = "twice" in tags
-        has_member_tag = any(member in tags for member in TWICE_MEMBERS)
+        has_twice_tag = "twice" in hashtags
+        has_member_tag = any(member in hashtags for member in TWICE_MEMBERS)
 
         if not (has_twice_tag and has_member_tag):
             print("⚠️ Skipping: must include #twice + member hashtag.")
