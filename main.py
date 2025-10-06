@@ -6,7 +6,8 @@ import requests
 import sys
 import re
 
-USERNAME = "twice_tiktok_official"
+# USERNAME is not used - this script is for scraping random TWICE fan videos
+# You'll need to provide video URLs manually or modify to search by hashtag
 SAVE_DIR = Path("downloads")
 SAVE_DIR.mkdir(exist_ok=True)
 
@@ -21,10 +22,12 @@ TWICE_MEMBERS = [
     "mina", "dahyun", "chaeyoung", "tzuyu"
 ]
 
-# ✅ Verified TWICE official accounts (set to None to allow fan content)
-VERIFIED_ACCOUNTS = [
+# ✅ Official TWICE accounts to IGNORE (you have separate code for these)
+OFFICIAL_ACCOUNTS_TO_SKIP = [
     "twice_tiktok_official",
     "twice.official",
+    "jypetwice",
+    "twicetagram",
 ]
 
 # Set to True to allow fan content, False to only allow official accounts
@@ -35,16 +38,16 @@ def is_twice_related(caption: str, hashtags: list, uploader: str) -> tuple[bool,
     """
     Determine if video is TWICE-related with multiple safety checks.
     For fan content: requires STRONG evidence (multiple indicators)
+    EXCLUDES official accounts (handled by separate script)
     Returns: (is_valid, reason)
     """
     caption_lower = caption.lower()
     hashtags_lower = [h.lower() for h in hashtags]
     
-    # Check if from official account
-    is_official = uploader.lower() in [acc.lower() for acc in VERIFIED_ACCOUNTS]
-    
-    if not is_official and not ALLOW_FAN_CONTENT:
-        return False, f"Not from verified account (got: {uploader})"
+    # ❌ SKIP official accounts (you have separate code for them)
+    is_official = uploader.lower() in [acc.lower() for acc in OFFICIAL_ACCOUNTS_TO_SKIP]
+    if is_official:
+        return False, f"⏭️ Skipping official account: {uploader} (handled by separate script)"
     
     # ✅ MUST have #twice hashtag (basic requirement)
     has_twice_tag = "twice" in hashtags_lower
@@ -84,20 +87,15 @@ def is_twice_related(caption: str, hashtags: list, uploader: str) -> tuple[bool,
     group_keywords = [
         "트와이스", "anniversary", "comeback", "debut",
         "mv", "choreography", "performance", "stage", "concert",
-        "showcase", "once", "ot9"
+        "showcase", "once", "ot9", "edit", "fanmade", "cover"
     ]
     matching_keywords = [kw for kw in group_keywords if kw in caption_lower]
     if matching_keywords:
         evidence_count += 1
         evidence_list.append(f"keywords: {', '.join(matching_keywords[:2])}")
     
-    # ✅ Decision logic
-    if is_official:
-        # Official accounts: lenient (just need #twice)
-        required_evidence = 0
-    else:
-        # Fan content: strict (need multiple proofs)
-        required_evidence = 2  # Require at least 2 pieces of evidence
+    # ✅ Fan content requires strong evidence
+    required_evidence = 2  # Require at least 2 pieces of evidence
     
     if evidence_count < required_evidence:
         return False, f"Insufficient evidence ({evidence_count}/{required_evidence}). Only generic #twice tag found"
@@ -113,35 +111,19 @@ def is_twice_related(caption: str, hashtags: list, uploader: str) -> tuple[bool,
         if blocked in caption_lower:
             return False, f"Blocklist keyword detected: '{blocked}'"
     
-    content_type = "official" if is_official else f"fan content (evidence: {evidence_count})"
-    return True, f"✅ Valid TWICE {content_type} - {'; '.join(evidence_list)}"
+    return True, f"✅ Valid TWICE fan content (evidence: {evidence_count}) - {'; '.join(evidence_list)}"
 
 
-def get_latest_video(username: str):
-    """Fetch the latest TikTok video with full caption and hashtags extracted from caption text."""
+def get_video_info(video_url: str):
+    """Fetch video metadata from a specific TikTok URL."""
     try:
-        # Step 1: Get latest video ID
-        playlist_cmd = [
-            "python", "-m", "yt_dlp", "-J", "--flat-playlist",
-            f"https://www.tiktok.com/@{username}"
-        ]
-        result = subprocess.run(playlist_cmd, capture_output=True, text=True, check=True)
-        data = json.loads(result.stdout)
-
-        if not data.get("entries"):
-            print("⚠️ No videos found.")
-            return None
-
-        latest_id = data["entries"][0]["id"]
-        video_url = f"https://www.tiktok.com/@{username}/video/{latest_id}"
-
-        # Step 2: Get video metadata
+        # Get video metadata
         video_cmd = ["python", "-m", "yt_dlp", "-j", video_url]
         video_result = subprocess.run(video_cmd, capture_output=True, text=True, check=True)
         video_data = json.loads(video_result.stdout)
 
         caption = video_data.get("description") or ""
-        uploader = video_data.get("uploader") or video_data.get("uploader_id") or username
+        uploader = video_data.get("uploader") or video_data.get("uploader_id") or "unknown"
 
         # 🔍 Extract hashtags from caption using regex
         hashtags = re.findall(r"#(\w+)", caption)  # Capture without #
@@ -169,6 +151,37 @@ def get_latest_video(username: str):
             "caption": caption or "No caption",
             "username": uploader
         }
+
+    except subprocess.CalledProcessError as e:
+        print("❌ yt-dlp error:", e.stderr)
+        return None
+    except json.JSONDecodeError as e:
+        print("❌ JSON parsing error:", str(e))
+        return None
+    except Exception as e:
+        print("❌ Unexpected error:", str(e))
+        return None
+
+
+def get_latest_video(username: str):
+    """Fetch the latest TikTok video with full caption and hashtags extracted from caption text."""
+    try:
+        # Step 1: Get latest video ID
+        playlist_cmd = [
+            "python", "-m", "yt_dlp", "-J", "--flat-playlist",
+            f"https://www.tiktok.com/@{username}"
+        ]
+        result = subprocess.run(playlist_cmd, capture_output=True, text=True, check=True)
+        data = json.loads(result.stdout)
+
+        if not data.get("entries"):
+            print("⚠️ No videos found.")
+            return None
+
+        latest_id = data["entries"][0]["id"]
+        video_url = f"https://www.tiktok.com/@{username}/video/{latest_id}"
+
+        return get_video_info(video_url)
 
     except subprocess.CalledProcessError as e:
         print("❌ yt-dlp error:", e.stderr)
@@ -227,8 +240,20 @@ def post_to_facebook(video_path: Path, caption: str):
 if __name__ == "__main__":
     print("🚀 Starting TWICE video checker...")
     
-    latest = get_latest_video(USERNAME)
-    if not latest:
+    # Method 1: Check a specific video URL
+    if len(sys.argv) > 1:
+        video_url = sys.argv[1]
+        print(f"📹 Checking video: {video_url}")
+        video_info = get_video_info(video_url)
+    else:
+        # Method 2: Check latest from a user (for testing)
+        print("ℹ️ No URL provided. Usage:")
+        print("   python main.py <tiktok_video_url>")
+        print("\nExample:")
+        print("   python main.py https://www.tiktok.com/@username/video/1234567890")
+        sys.exit(1)
+    
+    if not video_info:
         print("ℹ️ No valid TWICE video found.")
         sys.exit(0)
 
@@ -238,18 +263,18 @@ if __name__ == "__main__":
 
     uploaded_ids = set(ID_LIST_FILE.read_text().splitlines())
 
-    if latest["id"] in uploaded_ids:
-        print(f"⏩ Skipping: Video ({latest['id']}) already uploaded.")
+    if video_info["id"] in uploaded_ids:
+        print(f"⏩ Skipping: Video ({video_info['id']}) already processed.")
         sys.exit(0)
 
-    print("🔗 Latest video URL:", latest['url'])
-    print("📝 Caption:", latest['caption'][:200], "..." if len(latest['caption']) > 200 else "")
+    print("🔗 Latest video URL:", video_info['url'])
+    print("📝 Caption:", video_info['caption'][:200], "..." if len(video_info['caption']) > 200 else "")
     print("\n" + "="*50)
     print("🎬 WATCH VIDEO HERE:")
-    print(latest['url'])
+    print(video_info['url'])
     print("="*50 + "\n")
 
-    video_path = download_video(latest["url"], latest["id"])
+    video_path = download_video(video_info["url"], video_info["id"])
     if video_path and video_path.exists():
         print("✅ Video downloaded successfully!")
         print(f"📁 Saved to: {video_path}")
@@ -257,11 +282,11 @@ if __name__ == "__main__":
         # 🔧 TESTING MODE: Facebook posting disabled
         # Uncomment below to enable Facebook posting
         """
-        fb_caption = f"{latest['caption']}\n\ncrdts : {latest['username']}"
+        fb_caption = f"{video_info['caption']}\n\ncrdts : {video_info['username']}"
         if post_to_facebook(video_path, fb_caption):
             # Append video ID to history
             with open(ID_LIST_FILE, "a") as f:
-                f.write(latest["id"] + "\n")
+                f.write(video_info["id"] + "\n")
 
             video_path.unlink()  # cleanup
             print("🧹 Cleaned up local file.")
@@ -272,7 +297,7 @@ if __name__ == "__main__":
         # For testing: just mark as processed without uploading
         print("ℹ️ Skipping Facebook upload (testing mode)")
         with open(ID_LIST_FILE, "a") as f:
-            f.write(latest["id"] + "\n")
+            f.write(video_info["id"] + "\n")
         print("✅ Video ID added to history")
     
     print("✨ Process complete!")
