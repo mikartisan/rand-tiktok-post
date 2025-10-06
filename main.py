@@ -244,18 +244,35 @@ if __name__ == "__main__":
 
     print("🔗 Latest video URL:", latest['url'])
     print("📝 Caption:", latest['caption'][:200], "..." if len(latest['caption']) > 200 else "")
+    print("\n" + "="*50)
+    print("🎬 WATCH VIDEO HERE:")
+    print(latest['url'])
+    print("="*50 + "\n")
 
     video_path = download_video(latest["url"], latest["id"])
     if video_path and video_path.exists():
-        # fb_caption = f"{latest['caption']}\n\ncrdts : {latest['username']}"
-        # if post_to_facebook(video_path, fb_caption):
-        #     # Append video ID to history
-        #     with open(ID_LIST_FILE, "a") as f:
-        #         f.write(latest["id"] + "\n")
+        print("✅ Video downloaded successfully!")
+        print(f"📁 Saved to: {video_path}")
+        
+        # 🔧 TESTING MODE: Facebook posting disabled
+        # Uncomment below to enable Facebook posting
+        """
+        fb_caption = f"{latest['caption']}\n\ncrdts : {latest['username']}"
+        if post_to_facebook(video_path, fb_caption):
+            # Append video ID to history
+            with open(ID_LIST_FILE, "a") as f:
+                f.write(latest["id"] + "\n")
 
-        #     video_path.unlink()  # cleanup
-        #     print("🧹 Cleaned up local file.")
-        # else:
-        #     print("⚠️ Keeping video file due to upload failure")
+            video_path.unlink()  # cleanup
+            print("🧹 Cleaned up local file.")
+        else:
+            print("⚠️ Keeping video file due to upload failure")
+        """
+        
+        # For testing: just mark as processed without uploading
+        print("ℹ️ Skipping Facebook upload (testing mode)")
+        with open(ID_LIST_FILE, "a") as f:
+            f.write(latest["id"] + "\n")
+        print("✅ Video ID added to history")
     
     print("✨ Process complete!")
